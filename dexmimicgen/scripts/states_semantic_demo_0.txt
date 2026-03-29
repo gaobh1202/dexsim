@@ -1,0 +1,93 @@
+==== State semantic breakdown ====
+state_length = 92
+nq=46, nv=45, na=0
+has_time=True, time=0.0
+
+[000] time (s) =  0.0000000000
+---- qpos block (generalized positions) ----
+robot0_joint1 (hinge) qpos[0] = -0.0036316515
+robot0_joint2 (hinge) qpos[1] =  0.2245536335
+robot0_joint3 (hinge) qpos[2] = -0.0074894338
+robot0_joint4 (hinge) qpos[3] = -2.6124899117
+robot0_joint5 (hinge) qpos[4] = -0.0192150922
+robot0_joint6 (hinge) qpos[5] =  2.9491311931
+robot0_joint7 (hinge) qpos[6] =  0.7860669420
+gripper0_right_joint_r_thumb_proximal_1 (hinge) qpos[7] =  0.0000000000
+gripper0_right_joint_r_thumb_proximal_2 (hinge) qpos[8] =  0.0000000000
+gripper0_right_joint_r_thumb_middle (hinge) qpos[9] =  0.0000000000
+gripper0_right_joint_r_thumb_distal (hinge) qpos[10] =  0.0000000000
+gripper0_right_joint_r_index_proximal (hinge) qpos[11] =  0.0000000000
+gripper0_right_joint_r_index_distal (hinge) qpos[12] =  0.0000000000
+gripper0_right_joint_r_middle_proximal (hinge) qpos[13] =  0.0000000000
+gripper0_right_joint_r_middle_distal (hinge) qpos[14] =  0.0000000000
+gripper0_right_joint_r_ring_proximal (hinge) qpos[15] =  0.0000000000
+gripper0_right_joint_r_ring_distal (hinge) qpos[16] =  0.0000000000
+gripper0_right_joint_r_pinky_proximal (hinge) qpos[17] =  0.0000000000
+gripper0_right_joint_r_pinky_distal (hinge) qpos[18] =  0.0000000000
+robot1_joint1 (hinge) qpos[19] =  0.0136113449
+robot1_joint2 (hinge) qpos[20] =  0.1650796070
+robot1_joint3 (hinge) qpos[21] = -0.0113339524
+robot1_joint4 (hinge) qpos[22] = -2.6228368683
+robot1_joint5 (hinge) qpos[23] =  0.0302878257
+robot1_joint6 (hinge) qpos[24] =  2.9349315056
+robot1_joint7 (hinge) qpos[25] =  0.7863454597
+gripper1_right_joint_l_thumb_proximal_1 (hinge) qpos[26] =  0.0000000000
+gripper1_right_joint_l_thumb_proximal_2 (hinge) qpos[27] =  0.0000000000
+gripper1_right_joint_l_thumb_middle (hinge) qpos[28] =  0.0000000000
+gripper1_right_joint_l_thumb_distal (hinge) qpos[29] =  0.0000000000
+gripper1_right_joint_l_index_proximal (hinge) qpos[30] =  0.0000000000
+gripper1_right_joint_l_index_distal (hinge) qpos[31] =  0.0000000000
+gripper1_right_joint_l_middle_proximal (hinge) qpos[32] =  0.0000000000
+gripper1_right_joint_l_middle_distal (hinge) qpos[33] =  0.0000000000
+gripper1_right_joint_l_ring_proximal (hinge) qpos[34] =  0.0000000000
+gripper1_right_joint_l_ring_distal (hinge) qpos[35] =  0.0000000000
+gripper1_right_joint_l_pinky_proximal (hinge) qpos[36] =  0.0000000000
+gripper1_right_joint_l_pinky_distal (hinge) qpos[37] =  0.0000000000
+DrawerObject_goal_slidey (slide) qpos[38] =  0.0000000000
+cleanup_object_joint0 (free) qpos[39:46] = pos_xyz=[-0.20746   0.38875   0.777758], quat_wxyz=[-0.540646  0.        0.        0.84125 ]
+
+---- qvel block (generalized velocities) ----
+robot0_joint1 (hinge) qvel[0] =  0.0000000000 (rad/s)
+robot0_joint2 (hinge) qvel[1] =  0.0000000000 (rad/s)
+robot0_joint3 (hinge) qvel[2] =  0.0000000000 (rad/s)
+robot0_joint4 (hinge) qvel[3] =  0.0000000000 (rad/s)
+robot0_joint5 (hinge) qvel[4] =  0.0000000000 (rad/s)
+robot0_joint6 (hinge) qvel[5] =  0.0000000000 (rad/s)
+robot0_joint7 (hinge) qvel[6] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_thumb_proximal_1 (hinge) qvel[7] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_thumb_proximal_2 (hinge) qvel[8] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_thumb_middle (hinge) qvel[9] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_thumb_distal (hinge) qvel[10] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_index_proximal (hinge) qvel[11] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_index_distal (hinge) qvel[12] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_middle_proximal (hinge) qvel[13] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_middle_distal (hinge) qvel[14] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_ring_proximal (hinge) qvel[15] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_ring_distal (hinge) qvel[16] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_pinky_proximal (hinge) qvel[17] =  0.0000000000 (rad/s)
+gripper0_right_joint_r_pinky_distal (hinge) qvel[18] =  0.0000000000 (rad/s)
+robot1_joint1 (hinge) qvel[19] =  0.0000000000 (rad/s)
+robot1_joint2 (hinge) qvel[20] =  0.0000000000 (rad/s)
+robot1_joint3 (hinge) qvel[21] =  0.0000000000 (rad/s)
+robot1_joint4 (hinge) qvel[22] =  0.0000000000 (rad/s)
+robot1_joint5 (hinge) qvel[23] =  0.0000000000 (rad/s)
+robot1_joint6 (hinge) qvel[24] =  0.0000000000 (rad/s)
+robot1_joint7 (hinge) qvel[25] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_thumb_proximal_1 (hinge) qvel[26] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_thumb_proximal_2 (hinge) qvel[27] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_thumb_middle (hinge) qvel[28] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_thumb_distal (hinge) qvel[29] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_index_proximal (hinge) qvel[30] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_index_distal (hinge) qvel[31] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_middle_proximal (hinge) qvel[32] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_middle_distal (hinge) qvel[33] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_ring_proximal (hinge) qvel[34] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_ring_distal (hinge) qvel[35] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_pinky_proximal (hinge) qvel[36] =  0.0000000000 (rad/s)
+gripper1_right_joint_l_pinky_distal (hinge) qvel[37] =  0.0000000000 (rad/s)
+DrawerObject_goal_slidey (slide) qvel[38] =  0.0000000000 (m/s)
+cleanup_object_joint0 (free) qvel[39:45] = lin_vel_xyz=[0. 0. 0.], ang_vel_xyz=[0. 0. 0.]
+
+---- remaining blocks ----
+act shape: (0,) (actuator internal state)
+rest shape: (0,) (no extra tail)
