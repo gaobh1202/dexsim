@@ -13,12 +13,21 @@ Controls:
 """
 
 import argparse
+import os
 import time
 from threading import Lock
 
 import numpy as np
 import robosuite
 from pynput.keyboard import Key, Listener
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+try:
+    import open3d as o3d
+except ImportError:
+    o3d = None
 
 INIT_ARM_QPOS = np.array(
     [
@@ -47,6 +56,178 @@ INSPIRE_GROUPS_ACTUATOR = (
     (8, 9, 10),   # thumb_distal, thumb_middle, thumb_proximal_2
     (11,),        # thumb_proximal_1
 )
+
+
+def _depth_to_colormap(depth_img):
+    """Convert HxWx1 depth to colorized uint8 image for display."""
+    depth = np.asarray(depth_img, dtype=np.float32).squeeze(-1)
+    finite_mask = np.isfinite(depth)
+    if not np.any(finite_mask):
+        return np.zeros((depth.shape[0], depth.shape[1], 3), dtype=np.uint8)
+    d = depth.copy()
+    d[~finite_mask] = 0.0
+    d_min = np.min(d[finite_mask])
+    d_max = np.max(d[finite_mask])
+    if d_max - d_min < 1e-8:
+        norm = np.zeros_like(d, dtype=np.uint8)
+    else:
+        norm = ((d - d_min) / (d_max - d_min) * 255.0).clip(0, 255).astype(np.uint8)
+    return cv2.applyColorMap(norm, cv2.COLORMAP_TURBO)
+
+
+def _resize_match_height(img, target_h):
+    h, w = img.shape[:2]
+    if h == target_h:
+        return img
+    scale = float(target_h) / float(h)
+    return cv2.resize(img, (int(w * scale), target_h), interpolation=cv2.INTER_AREA)
+
+
+def _show_camera_debug(obs):
+    """
+    Show front RGB + front depth + wrist RGB in one OpenCV window.
+    Expected keys:
+      - frontview_image (RGB)
+      - frontview_depth (HxWx1)
+      - robot0_eye_in_hand_image (RGB)
+    """
+    if cv2 is None:
+        return
+    front_rgb = obs.get("frontview_image", None)
+    front_depth = obs.get("frontview_depth", None)
+    wrist_rgb = obs.get("robot0_eye_in_hand_image", None)
+    if front_rgb is None or front_depth is None or wrist_rgb is None:
+        return
+
+    front_rgb_bgr = cv2.cvtColor(front_rgb, cv2.COLOR_RGB2BGR)
+    wrist_rgb_bgr = cv2.cvtColor(wrist_rgb, cv2.COLOR_RGB2BGR)
+    front_depth_vis = _depth_to_colormap(front_depth)
+
+    target_h = max(front_rgb_bgr.shape[0], front_depth_vis.shape[0], wrist_rgb_bgr.shape[0])
+    panels = [
+        _resize_match_height(front_rgb_bgr, target_h),
+        _resize_match_height(front_depth_vis, target_h),
+        _resize_match_height(wrist_rgb_bgr, target_h),
+    ]
+    canvas = np.concatenate(panels, axis=1)
+    cv2.imshow("DrillGrasp Cameras | front_rgb | front_depth | wrist_rgb", canvas)
+    cv2.waitKey(1)
+
+
+def _show_selected_rgbd(obs, camera_name):
+    """Show RGB + depth for a selected camera in one OpenCV window."""
+    if cv2 is None:
+        return
+    rgb = obs.get(f"{camera_name}_image", None)
+    depth = obs.get(f"{camera_name}_depth", None)
+    if rgb is None:
+        return
+    if camera_name == "thirdview":
+        # Keep thirdview aligned with frontview visual convention.
+        rgb = np.flip(rgb, axis=0).copy()
+        if depth is not None:
+            depth = np.flip(depth, axis=0).copy()
+
+    rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    panels = [rgb_bgr]
+    title = f"DrillGrasp RGB-D | {camera_name}"
+    if depth is not None:
+        depth_vis = _depth_to_colormap(depth)
+        target_h = max(rgb_bgr.shape[0], depth_vis.shape[0])
+        panels = [
+            _resize_match_height(rgb_bgr, target_h),
+            _resize_match_height(depth_vis, target_h),
+        ]
+        title = f"DrillGrasp RGB-D | {camera_name} | rgb + depth"
+    canvas = np.concatenate(panels, axis=1)
+    cv2.imshow(title, canvas)
+    cv2.waitKey(1)
+
+
+def _camera_intrinsics_from_fovy(width, height, fovy_rad):
+    fy = 0.5 * float(height) / np.tan(0.5 * fovy_rad)
+    fx = fy
+    cx = (float(width) - 1.0) / 2.0
+    cy = (float(height) - 1.0) / 2.0
+    return fx, fy, cx, cy
+
+
+def _depth_rgb_to_world_points(sim, camera_name, rgb, depth):
+    """Back-project RGB-D to world-frame point cloud using MuJoCo camera pose."""
+    cam_id = sim.model.camera_name2id(camera_name)
+    cam_pos = np.array(sim.data.cam_xpos[cam_id], dtype=np.float64)
+    cam_rot = np.array(sim.data.cam_xmat[cam_id], dtype=np.float64).reshape(3, 3)
+    fovy = np.deg2rad(float(sim.model.cam_fovy[cam_id]))
+
+    rgb_np = np.asarray(rgb, dtype=np.uint8)
+    depth_np = np.asarray(depth, dtype=np.float64).squeeze(-1)
+    if camera_name == "thirdview":
+        rgb_np = np.flip(rgb_np, axis=0).copy()
+        depth_np = np.flip(depth_np, axis=0).copy()
+    h, w = depth_np.shape
+    fx, fy, cx, cy = _camera_intrinsics_from_fovy(w, h, fovy)
+
+    valid = np.isfinite(depth_np) & (depth_np > 1e-6)
+    if not np.any(valid):
+        return np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.float64)
+
+    v_coords, u_coords = np.where(valid)
+    z = depth_np[v_coords, u_coords]
+    x = (u_coords.astype(np.float64) - cx) * z / fx
+    y = (v_coords.astype(np.float64) - cy) * z / fy
+    points_cam = np.stack([x, y, z], axis=1)
+
+    # MuJoCo camera looks along -Z in camera frame. Flip Y/Z to align with image/depth axes.
+    points_cam[:, 1] *= -1.0
+    points_cam[:, 2] *= -1.0
+
+    points_world = points_cam @ cam_rot.T + cam_pos[None, :]
+    colors = rgb_np[v_coords, u_coords].astype(np.float64) / 255.0
+    return points_world, colors
+
+
+def _write_ascii_ply(path, points, colors):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write(f"element vertex {points.shape[0]}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write("property uchar red\n")
+        f.write("property uchar green\n")
+        f.write("property uchar blue\n")
+        f.write("end_header\n")
+        rgb_u8 = np.clip(colors * 255.0, 0, 255).astype(np.uint8)
+        for p, c in zip(points, rgb_u8):
+            f.write(f"{p[0]} {p[1]} {p[2]} {int(c[0])} {int(c[1])} {int(c[2])}\n")
+
+
+class PointCloudViewer:
+    """Optional Open3D point cloud visualizer with fallback file export."""
+
+    def __init__(self, enable_vis=False):
+        self.enable_vis = bool(enable_vis and o3d is not None)
+        self._vis = None
+        self._pcd = None
+        if self.enable_vis:
+            self._vis = o3d.visualization.Visualizer()
+            self._vis.create_window(window_name="DrillGrasp Point Cloud", width=960, height=720)
+            self._pcd = o3d.geometry.PointCloud()
+            self._vis.add_geometry(self._pcd)
+
+    def update(self, points, colors):
+        if not self.enable_vis or points.shape[0] == 0:
+            return
+        self._pcd.points = o3d.utility.Vector3dVector(points)
+        self._pcd.colors = o3d.utility.Vector3dVector(colors)
+        self._vis.update_geometry(self._pcd)
+        self._vis.poll_events()
+        self._vis.update_renderer()
+
+    def close(self):
+        if self._vis is not None:
+            self._vis.destroy_window()
 
 
 def build_absolute_joint_controller_config():
@@ -304,21 +485,76 @@ def main():
     parser.add_argument("--control-freq", type=int, default=20)
     parser.add_argument("--max-fr", type=float, default=30.0)
     parser.add_argument(
+        "--disable-mj-viewer",
+        action="store_true",
+        help="Disable MuJoCo on-screen viewer to avoid GLX context conflicts.",
+    )
+    parser.add_argument(
         "--debug-print",
         action="store_true",
         help="Print arm / hand targets and current qpos every control step.",
     )
+    parser.add_argument("--camera-width", type=int, default=256)
+    parser.add_argument("--camera-height", type=int, default=256)
+    parser.add_argument(
+        "--camera-names",
+        nargs="+",
+        default=["frontview", "robot0_eye_in_hand"],
+        help="Camera names enabled in env observations.",
+    )
+    parser.add_argument(
+        "--rgbd-camera",
+        type=str,
+        default="frontview",
+        help="Camera used for RGB-D rendering and point cloud generation.",
+    )
+    parser.add_argument(
+        "--disable-camera-window",
+        action="store_true",
+        help="Disable OpenCV camera debug window.",
+    )
+    parser.add_argument(
+        "--enable-pointcloud-vis",
+        action="store_true",
+        help="Enable Open3D real-time point cloud window (requires open3d).",
+    )
+    parser.add_argument(
+        "--save-pointcloud-dir",
+        type=str,
+        default=None,
+        help="Directory to save point cloud files (.ply) periodically.",
+    )
+    parser.add_argument(
+        "--pointcloud-save-every",
+        type=int,
+        default=30,
+        help="Save point cloud every N control steps when --save-pointcloud-dir is set.",
+    )
+    parser.add_argument(
+        "--pointcloud-max-points",
+        type=int,
+        default=8000,
+        help="Maximum number of points kept per frame (random downsample).",
+    )
     args = parser.parse_args()
 
+    if args.rgbd_camera not in args.camera_names:
+        raise ValueError(f"--rgbd-camera '{args.rgbd_camera}' must be included in --camera-names.")
+
     controller_config = build_absolute_joint_controller_config()
+    camera_depths = [cam == args.rgbd_camera for cam in args.camera_names]
 
     env = robosuite.make(
         env_name="DrillGrasp",
         robots="UR5eDex",
         controller_configs=controller_config,
-        has_renderer=True,
-        has_offscreen_renderer=False,
-        use_camera_obs=False,
+        has_renderer=not args.disable_mj_viewer,
+        has_offscreen_renderer=True,
+        use_camera_obs=True,
+        camera_names=args.camera_names,
+        camera_heights=[args.camera_height] * len(args.camera_names),
+        camera_widths=[args.camera_width] * len(args.camera_names),
+        camera_depths=camera_depths,
         control_freq=args.control_freq,
         ignore_done=True,
         render_camera=None,
@@ -354,8 +590,19 @@ def main():
     hand_target12 = np.array(env.sim.data.qpos[hand_qpos_idx], dtype=float)
     hand_target = hand_qpos12_to_norm6(hand_target12, hand_low12, hand_high12, hand_qpos_groups)
     auto_hand_start = hand_target.copy()
+    pointcloud_viewer = PointCloudViewer(enable_vis=args.enable_pointcloud_vis)
+    if args.enable_pointcloud_vis and o3d is None:
+        print("open3d not installed; disabling real-time point cloud window.")
+    if args.save_pointcloud_dir:
+        os.makedirs(args.save_pointcloud_dir, exist_ok=True)
 
     print("Loaded DrillGrasp with robot UR5eDex.")
+    print(
+        f"Camera obs enabled: names={args.camera_names}, rgbd_camera={args.rgbd_camera} @ "
+        f"{args.camera_width}x{args.camera_height}"
+    )
+    if cv2 is None and not args.disable_camera_window:
+        print("OpenCV not installed; camera window disabled (install python-opencv to enable).")
     print("Arm joints:")
     for i, name in enumerate(arm_controller.joint_names):
         print(f"  [{i}] {name}")
@@ -407,6 +654,25 @@ def main():
 
             env.sim.step()
             env._update_observables()
+            if not args.disable_camera_window:
+                cam_obs = env._get_observations(force_update=False)
+                _show_selected_rgbd(cam_obs, args.rgbd_camera)
+                rgb = cam_obs.get(f"{args.rgbd_camera}_image", None)
+                depth = cam_obs.get(f"{args.rgbd_camera}_depth", None)
+                if rgb is not None and depth is not None:
+                    points, colors = _depth_rgb_to_world_points(env.sim, args.rgbd_camera, rgb, depth)
+                    if points.shape[0] > args.pointcloud_max_points:
+                        choice = np.random.choice(points.shape[0], size=args.pointcloud_max_points, replace=False)
+                        points = points[choice]
+                        colors = colors[choice]
+                    pointcloud_viewer.update(points, colors)
+                    if (
+                        args.save_pointcloud_dir is not None
+                        and args.pointcloud_save_every > 0
+                        and step_idx % args.pointcloud_save_every == 0
+                    ):
+                        out_path = os.path.join(args.save_pointcloud_dir, f"pc_{step_idx:06d}.ply")
+                        _write_ascii_ply(out_path, points, colors)
             if env.viewer is not None:
                 env.viewer.update()
 
@@ -435,6 +701,9 @@ def main():
                 time.sleep(dt - elapsed)
     finally:
         key_editor.listener.stop()
+        pointcloud_viewer.close()
+        if cv2 is not None:
+            cv2.destroyAllWindows()
         env.close()
 
 

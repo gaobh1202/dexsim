@@ -31,8 +31,9 @@ DEXUMI_RANGES = {
 
 # DrillGrasp hand command order:
 # [pinky, ring, middle, index, thumb_bend, thumb_proximal_1]
-DEFAULT_HAND6_QPOS_CLOSED = np.zeros(6, dtype=float)
-DEFAULT_HAND6_QPOS_OPEN = np.ones(6, dtype=float)
+# For Inspire hand in this sim setup, qpos=1 means closed and qpos=0 means open.
+DEFAULT_HAND6_QPOS_CLOSED = np.ones(6, dtype=float)
+DEFAULT_HAND6_QPOS_OPEN = np.zeros(6, dtype=float)
 
 # Mapping from DrillGrasp expanded 12D hand qpos -> compact 6D command groups.
 HAND12_TO_HAND6_GROUPS = (
@@ -62,12 +63,17 @@ def dex_angles_to_hand_norm6(angles: np.ndarray) -> np.ndarray:
     """
     thumb_root = map_value(angles[0], *DEXUMI_RANGES["thumb_root"], 0.0, 1.0)
     thumb_mid = map_value(angles[1], *DEXUMI_RANGES["thumb_mid"], 0.0, 1.0)
-    pinky = map_value(angles[2], *DEXUMI_RANGES["pinky"], 0.0, 1.0)
+    index = map_value(angles[5], *DEXUMI_RANGES["index"], 0.0, 1.0)
     middle = map_value(angles[3], *DEXUMI_RANGES["middle"], 0.0, 1.0)
     ring = map_value(angles[4], *DEXUMI_RANGES["ring"], 0.0, 1.0)
-    index = map_value(angles[5], *DEXUMI_RANGES["index"], 0.0, 1.0)
+    pinky = map_value(angles[2], *DEXUMI_RANGES["pinky"], 0.0, 1.0)
+    # return np.clip(
+    #     np.array([pinky, ring, middle, index, thumb_mid, thumb_root], dtype=float),
+    #     0.0,
+    #     1.0,
+    # )
     return np.clip(
-        np.array([pinky, ring, middle, index, thumb_mid, thumb_root], dtype=float),
+        np.array([index, middle, ring, pinky, thumb_mid, thumb_root], dtype=float),
         0.0,
         1.0,
     )
@@ -257,12 +263,29 @@ class TeleopServerDrillGrasp:
                 time.sleep(sleep_time)
 
     def _handle_request(self, req: dict) -> dict:
+        def _to_serializable(x):
+            if isinstance(x, np.ndarray):
+                return x.tolist()
+            if isinstance(x, (np.floating, np.integer)):
+                return x.item()
+            if isinstance(x, dict):
+                return {k: _to_serializable(v) for k, v in x.items()}
+            if isinstance(x, (list, tuple)):
+                return [_to_serializable(v) for v in x]
+            return x
+
         typ = req.get("type")
         if typ == "PING":
             return {"ok": True, "type": "PONG"}
 
         if typ == "GET_STATE":
+            include_images = bool(req.get("include_images", False))
             with self.lock:
+                obs = self._get_obs()
+                obs_dict = obs.get("obs_dict", {})
+                camera_info = obs.get("camera_info", {})
+                if not include_images:
+                    obs_dict = {k: v for k, v in obs_dict.items() if (not k.endswith("_image")) and (not k.endswith("_depth"))}
                 return {
                     "ok": True,
                     "armqpos6": np.asarray(self.latest_arm_qpos).tolist(),
@@ -271,6 +294,33 @@ class TeleopServerDrillGrasp:
                     "gelloaction6": np.asarray(self.latest_gello_action).tolist(),
                     "umiaction6": np.asarray(self.latest_umi_action).tolist(),
                     "force6": np.asarray(self.latest_force).tolist(),
+                    # Extended payload for dexmimic-style collectors
+                    "sim_state": _to_serializable(obs.get("sim_state", np.array([], dtype=float))),
+                    "actions": _to_serializable(obs.get("actions", np.array([], dtype=float))),
+                    "action_dict": {
+                        "right": _to_serializable(obs.get("action_dict_right", np.zeros(6, dtype=float))),
+                        "right_gripper": _to_serializable(
+                            obs.get("action_dict_right_gripper", np.zeros(6, dtype=float))
+                        ),
+                    },
+                    "obs": {
+                        **_to_serializable(obs_dict),
+                        "robot0_joint_pos": _to_serializable(obs.get("obs_robot0_joint_pos", np.zeros(6, dtype=float))),
+                        "robot0_joint_vel": _to_serializable(obs.get("obs_robot0_joint_vel", np.zeros(6, dtype=float))),
+                        "robot0_gripper_qpos": _to_serializable(obs.get("obs_robot0_gripper_qpos", np.zeros(12, dtype=float))),
+                        "robot0_gripper_qvel": _to_serializable(obs.get("obs_robot0_gripper_qvel", np.zeros(12, dtype=float))),
+                        "robot0_eef_pos": _to_serializable(obs.get("obs_robot0_eef_pos", np.zeros(3, dtype=float))),
+                        "robot0_eef_quat": _to_serializable(obs.get("obs_robot0_eef_quat", np.array([0.0, 0.0, 0.0, 1.0], dtype=float))),
+                        "drill_001_pos": _to_serializable(obs.get("obs_drill_001_pos", np.zeros(3, dtype=float))),
+                        "drill_001_quat": _to_serializable(obs.get("obs_drill_001_quat", np.array([0.0, 0.0, 0.0, 1.0], dtype=float))),
+                    },
+                    "datagen_info": {
+                        "subtask_term_signals": {
+                            "drill_grasped": int(np.asarray(obs.get("signal_drill_grasped", [0]))[0]),
+                            "drill_lifted": int(np.asarray(obs.get("signal_drill_lifted", [0]))[0]),
+                        }
+                    },
+                    "camera_info": _to_serializable(camera_info),
                 }
 
         if typ == "SET_INITIAL":

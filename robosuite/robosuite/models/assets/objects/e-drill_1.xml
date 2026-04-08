@@ -3,7 +3,7 @@
     <mesh
       file="robosuite/models/assets/objects/meshes/e_drill_1.obj"
       name="e_drill_1"
-      scale="1 1 1"
+      scale="1.2 1.2 1.2"
     />
     <texture file="robosuite/models/assets/textures/e_drill_1.png" type="2d" name="e_drill_1_tex"/>
     <material
@@ -14,13 +14,13 @@
       texuniform="true"
     />
 
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_0.obj" name="col_part_0" />
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_1.obj" name="col_part_1" />
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_2.obj" name="col_part_2" />
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_3.obj" name="col_part_3" />
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_4.obj" name="col_part_4" />
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_5.obj" name="col_part_5" />
-    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_6.obj" name="col_part_6" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_0.obj" name="col_part_0" scale="1.2 1.2 1.2" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_1.obj" name="col_part_1" scale="1.2 1.2 1.2" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_2.obj" name="col_part_2" scale="1.2 1.2 1.2" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_3.obj" name="col_part_3" scale="1.2 1.2 1.2" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_4.obj" name="col_part_4" scale="1.2 1.2 1.2" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_5.obj" name="col_part_5" scale="1.2 1.2 1.2" />
+    <mesh file="robosuite/models/assets/objects/meshes/e_drill_1_collision/collision_part_6.obj" name="col_part_6" scale="1.2 1.2 1.2" />
   </asset>
 
   <worldbody>
@@ -48,9 +48,9 @@
 
       </body>
       
-      <site rgba="0 0 0 0" size="0.005" pos="0 0 -0.0980202" name="bottom_site"/>
-      <site rgba="0 0 0 0" size="0.005" pos="0 0 0.0980202" name="top_site"/>
-      <site rgba="0 0 0 0" size="0.005" pos="0.0897731 0.0897731 0" name="horizontal_radius_site"/>
+      <site rgba="0 0 0 0" size="0.006" pos="0 0 -0.11762424" name="bottom_site"/>
+      <site rgba="0 0 0 0" size="0.006" pos="0 0 0.11762424" name="top_site"/>
+      <site rgba="0 0 0 0" size="0.006" pos="0.10772772 0.10772772 0" name="horizontal_radius_site"/>
     </body>
   </worldbody>
 </mujoco>

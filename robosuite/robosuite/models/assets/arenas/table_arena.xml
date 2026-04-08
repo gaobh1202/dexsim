@@ -41,6 +41,8 @@
     <light pos="1.0 1.0 1.5" dir="-0.2 -0.2 -1" specular="0.3 0.3 0.3" directional="true" castshadow="false"/>
     <!-- front view -->
     <camera mode="fixed" name="frontview" pos="1.5 0 1.45" quat="0.56 0.43 0.43 0.56"/>
+    <!-- third view (pitched 10 deg downward from frontview for 3D policy point cloud capture) -->
+    <camera mode="fixed" name="thirdview" pos="1.4 0 1.8" quat="0.5962 0.3801 0.3801 0.5962"/>
     <!-- bird view -->
     <camera mode="fixed" name="birdview" pos="-0.2 0 3.0" quat="0.7071 0 0 -0.7071"/>
     <!-- agent view -->
