@@ -42,6 +42,9 @@ class Args:
     hz: int = 25
     length: int = 700
     verbose: bool = True
+    sock_timeout_s: float = 0.0  # <=0 disables recv timeout (block until server replies)
+    collect_mode: str = "lite"  # "lite" for action/state only, "full" for rich obs
+    include_images: bool = True  # only used in full mode
 
 
 def _pose_from_pos_quat_xyzw(pos, quat_xyzw):
@@ -128,12 +131,20 @@ class DrillGraspCollectorClient:
         self.dt = 1.0 / args.hz
         self.save_dir = Path(args.out_dir).expanduser()
         self.save_dir.mkdir(parents=True, exist_ok=True)
+        self.collect_mode = str(args.collect_mode).strip().lower()
+        if self.collect_mode not in ("lite", "full"):
+            raise ValueError(f"Invalid collect_mode={args.collect_mode}, expected 'lite' or 'full'")
 
 
     def _connect(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.addr)
         sock.settimeout(1.0)
+        # timeout_s = float(self.args.sock_timeout_s)
+        # if timeout_s > 0:
+        #     sock.settimeout(timeout_s)
+        # else:
+        #     sock.settimeout(None)
         return sock
 
     @staticmethod
@@ -144,7 +155,9 @@ class DrillGraspCollectorClient:
     def _recv(sock):
         buf = b""
         while True:
-            chunk = sock.recv(4096)
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:                return None
             if not chunk:
                 raise RuntimeError("server disconnected")
             buf += chunk
@@ -190,7 +203,10 @@ class DrillGraspCollectorClient:
 
     def collect_one_demo(self, sock, demo_number: int):
         if self.args.verbose:
-            print(f"\n[collector] Start demo {demo_number}, frames={self.args.length}, hz={self.args.hz}")
+            print(
+                f"\n[collector] Start demo {demo_number}, frames={self.args.length}, "
+                f"hz={self.args.hz}, mode={self.collect_mode}"
+            )
 
         # Raw buffers (fallback-compatible)
         arm_qpos_list = []
@@ -216,12 +232,19 @@ class DrillGraspCollectorClient:
         right_rel_pos_list = []
         right_rel_rot_axis_angle_list = []
         right_rel_rot_6d_list = []
+        next_progress_print = 100
 
+        lite_mode = self.collect_mode == "lite"
+        include_images = (not lite_mode) and bool(self.args.include_images)
         for i in range(self.args.length):
             start_t = time.time()
 
-            self._send(sock, {"type": "GET_STATE", "include_images": True})
+            self._send(sock, {"type": "GET_STATE", "include_images": include_images, "lite": lite_mode})
             resp = self._recv(sock)
+            if resp is None:
+                if self.args.verbose and (i % 25 == 0):
+                    print("[collector] recv timeout, skip this frame")
+                continue
             if not resp.get("ok", False):
                 continue
 
@@ -289,23 +312,32 @@ class DrillGraspCollectorClient:
             right_rel_rot_axis_angle_list.append(rel_rot_aa)
             right_rel_rot_6d_list.append(rel_rot_6d)
 
-            # Collect simulator obs directly, same style as collect_human_demonstration_in_drill_grasp.py
-            for k, v in obs_ext.items():
-                arr = np.asarray(v)
-                if arr.ndim == 0 or k.endswith("-state"):
-                    continue
-                if k not in obs_buffer:
-                    obs_buffer[k] = []
-                obs_buffer[k].append(arr)
+            captured = len(arm_qpos_list)
+            if captured >= next_progress_print:
+                print(
+                    f"[collector] progress: captured={captured} valid frames "
+                    f"(loop_step={i + 1}/{self.args.length})"
+                )
+                next_progress_print += 100
 
-            # Per-step camera intrinsics / extrinsics for later pointcloud synthesis
-            for cam_name, cinfo in camera_info.items():
-                K = np.asarray(cinfo.get("intrinsic", np.eye(3)), dtype=np.float64)
-                E = np.asarray(cinfo.get("extrinsic", np.eye(4)), dtype=np.float64)
-                if cam_name not in camera_info_buffer:
-                    camera_info_buffer[cam_name] = {"intrinsic": [], "extrinsic": []}
-                camera_info_buffer[cam_name]["intrinsic"].append(K)
-                camera_info_buffer[cam_name]["extrinsic"].append(E)
+            if not lite_mode:
+                # Collect simulator obs directly, same style as collect_human_demonstration_in_drill_grasp.py
+                for k, v in obs_ext.items():
+                    arr = np.asarray(v)
+                    if arr.ndim == 0 or k.endswith("-state"):
+                        continue
+                    if k not in obs_buffer:
+                        obs_buffer[k] = []
+                    obs_buffer[k].append(arr)
+
+                # Per-step camera intrinsics / extrinsics for later pointcloud synthesis
+                for cam_name, cinfo in camera_info.items():
+                    K = np.asarray(cinfo.get("intrinsic", np.eye(3)), dtype=np.float64)
+                    E = np.asarray(cinfo.get("extrinsic", np.eye(4)), dtype=np.float64)
+                    if cam_name not in camera_info_buffer:
+                        camera_info_buffer[cam_name] = {"intrinsic": [], "extrinsic": []}
+                    camera_info_buffer[cam_name]["intrinsic"].append(K)
+                    camera_info_buffer[cam_name]["extrinsic"].append(E)
 
             if self.args.verbose and (i % 25 == 0):
                 print(f"[collector] step {i:04d}/{self.args.length}")
@@ -343,6 +375,7 @@ class DrillGraspCollectorClient:
             camera_info_buffer=camera_info_buffer,
             pointcloud_buffer=pointcloud_buffer,
             pointcloud_count_buffer=pointcloud_count_buffer,
+            lite_mode=lite_mode,
         )
         self._write_demo_hdf5(out_path, demo)
         return str(out_path)
@@ -369,6 +402,7 @@ class DrillGraspCollectorClient:
         camera_info_buffer,
         pointcloud_buffer,
         pointcloud_count_buffer,
+        lite_mode: bool = False,
     ):
         t = arm_qpos.shape[0]
 
@@ -386,40 +420,42 @@ class DrillGraspCollectorClient:
         else:
             actions = np.concatenate([gello_action, hand_qpos], axis=1).astype(np.float64)
 
-        # Simulator observations (camera and proprioception) from GET_STATE obs
-        obs = {k: np.asarray(v) for k, v in obs_buffer.items()}
-        # Ensure required keys exist even if server stream misses them
-        obs.setdefault("robot0_joint_pos", arm_qpos.astype(np.float64))
-        obs.setdefault("robot0_gripper_qpos", hand_qpos.astype(np.float64))
-        obs.setdefault("robot0_eef_pos", ee_pos.astype(np.float64))
-        obs.setdefault("robot0_eef_quat", ee_quat_xyzw.astype(np.float64))
+        obs = {}
+        if not lite_mode:
+            # Simulator observations (camera and proprioception) from GET_STATE obs
+            obs = {k: np.asarray(v) for k, v in obs_buffer.items()}
+            # Ensure required keys exist even if server stream misses them
+            obs.setdefault("robot0_joint_pos", arm_qpos.astype(np.float64))
+            obs.setdefault("robot0_gripper_qpos", hand_qpos.astype(np.float64))
+            obs.setdefault("robot0_eef_pos", ee_pos.astype(np.float64))
+            obs.setdefault("robot0_eef_quat", ee_quat_xyzw.astype(np.float64))
 
-        # Build point clouds from saved RGB-D + camera intr/extr
-        for k in list(obs.keys()):
-            if not k.endswith("_depth"):
-                continue
-            cam_name = k[: -len("_depth")]
-            if cam_name not in camera_info_buffer:
-                continue
-            depth_seq = np.asarray(obs[k])
-            intr_seq = np.asarray(camera_info_buffer[cam_name]["intrinsic"], dtype=np.float64)
-            ext_seq = np.asarray(camera_info_buffer[cam_name]["extrinsic"], dtype=np.float64)
-            if depth_seq.shape[0] != t or intr_seq.shape[0] != t or ext_seq.shape[0] != t:
-                continue
+            # Build point clouds from saved RGB-D + camera intr/extr
+            for k in list(obs.keys()):
+                if not k.endswith("_depth"):
+                    continue
+                cam_name = k[: -len("_depth")]
+                if cam_name not in camera_info_buffer:
+                    continue
+                depth_seq = np.asarray(obs[k])
+                intr_seq = np.asarray(camera_info_buffer[cam_name]["intrinsic"], dtype=np.float64)
+                ext_seq = np.asarray(camera_info_buffer[cam_name]["extrinsic"], dtype=np.float64)
+                if depth_seq.shape[0] != t or intr_seq.shape[0] != t or ext_seq.shape[0] != t:
+                    continue
 
-            pcs = []
-            counts = []
-            for i in range(t):
-                pts, cnt = _depth_to_pointcloud_world(
-                    depth=depth_seq[i],
-                    intrinsic=intr_seq[i],
-                    extrinsic=ext_seq[i],
-                    max_points=4096,
-                )
-                pcs.append(pts)
-                counts.append(cnt)
-            pointcloud_buffer[cam_name] = np.asarray(pcs, dtype=np.float32)
-            pointcloud_count_buffer[cam_name] = np.asarray(counts, dtype=np.int32)
+                pcs = []
+                counts = []
+                for i in range(t):
+                    pts, cnt = _depth_to_pointcloud_world(
+                        depth=depth_seq[i],
+                        intrinsic=intr_seq[i],
+                        extrinsic=ext_seq[i],
+                        max_points=4096,
+                    )
+                    pcs.append(pts)
+                    counts.append(cnt)
+                pointcloud_buffer[cam_name] = np.asarray(pcs, dtype=np.float32)
+                pointcloud_count_buffer[cam_name] = np.asarray(counts, dtype=np.int32)
 
         eef_pose = np.stack([_pose_from_pos_quat_xyzw(ee_pos[i], ee_quat_xyzw[i]) for i in range(t)], axis=0)
         if drill_pos.size > 0 and drill_quat_xyzw.size > 0 and drill_pos.shape[0] == t:
@@ -445,21 +481,29 @@ class DrillGraspCollectorClient:
                 "target_pose": eef_pose[:, None, :, :],  # fallback
                 "gripper_action": hand_qpos[:, None, :],  # (T,1,6)
                 "object_poses": {"drill_001": object_pose},
-                "camera_info": {
-                    cam: {
-                        "intrinsic": np.asarray(v["intrinsic"], dtype=np.float64),
-                        "extrinsic": np.asarray(v["extrinsic"], dtype=np.float64),
+                "camera_info": (
+                    {
+                        cam: {
+                            "intrinsic": np.asarray(v["intrinsic"], dtype=np.float64),
+                            "extrinsic": np.asarray(v["extrinsic"], dtype=np.float64),
+                        }
+                        for cam, v in camera_info_buffer.items()
+                        if len(v["intrinsic"]) == t and len(v["extrinsic"]) == t
                     }
-                    for cam, v in camera_info_buffer.items()
-                    if len(v["intrinsic"]) == t and len(v["extrinsic"]) == t
-                },
-                "pointclouds": {
-                    cam: {
-                        "points": np.asarray(pointcloud_buffer[cam], dtype=np.float32),
-                        "counts": np.asarray(pointcloud_count_buffer[cam], dtype=np.int32),
+                    if (not lite_mode)
+                    else {}
+                ),
+                "pointclouds": (
+                    {
+                        cam: {
+                            "points": np.asarray(pointcloud_buffer[cam], dtype=np.float32),
+                            "counts": np.asarray(pointcloud_count_buffer[cam], dtype=np.int32),
+                        }
+                        for cam in pointcloud_buffer.keys()
                     }
-                    for cam in pointcloud_buffer.keys()
-                },
+                    if (not lite_mode)
+                    else {}
+                ),
                 "subtask_term_signals": {
                     "drill_grasped": signal_grasped.astype(np.int64) if signal_grasped.shape[0] == t else np.zeros((t,), dtype=np.int64),
                     "drill_lifted": signal_lifted.astype(np.int64) if signal_lifted.shape[0] == t else np.zeros((t,), dtype=np.int64),
@@ -487,16 +531,21 @@ class DrillGraspCollectorClient:
             group.create_dataset(key, data=value)
 
     def _write_demo_hdf5(self, filepath: Path, demo: Dict):
+        camera_names = [k.replace("_image", "") for k in demo["obs"].keys() if k.endswith("_image")]
         env_args = {
             "env_name": "DrillGrasp",
             "collector": "collect_client_drillgrasp",
+            "collector_mode": self.collect_mode,
             "teleop_source": f"tcp://{self.addr[0]}:{self.addr[1]}",
-            "note": "Client-side collection from teleop server streams",
+            "note": "Client-side collection from teleop server streams; lite mode stores action/state only for later replay.",
             "env_kwargs": {
-                "camera_names": [k.replace("_image", "") for k in demo["obs"].keys() if k.endswith("_image")],
+                "robots": "UR5eDex",
+                "camera_names": camera_names if len(camera_names) > 0 else ["thirdview", "robot0_eye_in_hand"],
                 "camera_heights": 84,
                 "camera_widths": 84,
+                "camera_depths": [True, True],
                 "use_camera_obs": any(k.endswith("_image") for k in demo["obs"].keys()),
+                "control_freq": int(self.args.hz),
             },
         }
         with h5py.File(filepath, "w") as f:

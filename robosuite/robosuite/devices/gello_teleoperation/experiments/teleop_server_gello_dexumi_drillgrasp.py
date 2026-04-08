@@ -146,6 +146,12 @@ class TeleopServerDrillGrasp:
         self.latest_ee_pose = np.zeros(7)
         self.latest_force = np.zeros(6)
         self.current_hand_cmd6 = np.zeros(6)
+        self.latest_sim_state = np.array([], dtype=float)
+        self.latest_actions = np.zeros(12, dtype=float)
+        self.latest_obs_dict = {}
+        self.latest_camera_info = {}
+        self.latest_signal_drill_grasped = 0
+        self.latest_signal_drill_lifted = 0
 
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -153,6 +159,7 @@ class TeleopServerDrillGrasp:
         self.override_ur_target = None
         self.override_hand_target = None
         self.initialization_complete = threading.Event()
+        self.frame_id = 0
 
         self.th_arm = None
         self.th_hand = None
@@ -224,6 +231,13 @@ class TeleopServerDrillGrasp:
                     self.latest_hand_qpos = np.asarray(hand6_obs, dtype=float)
                     self.latest_gello_action = ur_target
                     self.latest_ee_pose = ee_pose
+                    self.latest_sim_state = np.asarray(obs.get("sim_state", np.array([], dtype=float)), dtype=float)
+                    self.latest_actions = np.asarray(obs.get("actions", np.zeros(12, dtype=float)), dtype=float)
+                    self.latest_obs_dict = dict(obs.get("obs_dict", {}))
+                    self.latest_camera_info = dict(obs.get("camera_info", {}))
+                    self.latest_signal_drill_grasped = int(np.asarray(obs.get("signal_drill_grasped", [0]))[0])
+                    self.latest_signal_drill_lifted = int(np.asarray(obs.get("signal_drill_lifted", [0]))[0])
+                    self.frame_id += 1
             except Exception as e:
                 print(f"[WARN] arm_loop failed: {e}")
 
@@ -280,45 +294,41 @@ class TeleopServerDrillGrasp:
 
         if typ == "GET_STATE":
             include_images = bool(req.get("include_images", False))
+            lite = bool(req.get("lite", False))
             with self.lock:
-                obs = self._get_obs()
-                obs_dict = obs.get("obs_dict", {})
-                camera_info = obs.get("camera_info", {})
+                obs_dict = dict(self.latest_obs_dict)
+                camera_info = dict(self.latest_camera_info)
                 if not include_images:
                     obs_dict = {k: v for k, v in obs_dict.items() if (not k.endswith("_image")) and (not k.endswith("_depth"))}
-                return {
+                base_resp = {
                     "ok": True,
+                    "frame_id": int(self.frame_id),
+                    "server_time_s": float(time.time()),
                     "armqpos6": np.asarray(self.latest_arm_qpos).tolist(),
                     "handqpos6": np.asarray(self.latest_hand_qpos).tolist(),
                     "armee7": np.asarray(self.latest_ee_pose).tolist(),
                     "gelloaction6": np.asarray(self.latest_gello_action).tolist(),
                     "umiaction6": np.asarray(self.latest_umi_action).tolist(),
                     "force6": np.asarray(self.latest_force).tolist(),
-                    # Extended payload for dexmimic-style collectors
-                    "sim_state": _to_serializable(obs.get("sim_state", np.array([], dtype=float))),
-                    "actions": _to_serializable(obs.get("actions", np.array([], dtype=float))),
+                    "sim_state": _to_serializable(self.latest_sim_state),
+                    "actions": _to_serializable(self.latest_actions),
                     "action_dict": {
-                        "right": _to_serializable(obs.get("action_dict_right", np.zeros(6, dtype=float))),
-                        "right_gripper": _to_serializable(
-                            obs.get("action_dict_right_gripper", np.zeros(6, dtype=float))
-                        ),
-                    },
-                    "obs": {
-                        **_to_serializable(obs_dict),
-                        "robot0_joint_pos": _to_serializable(obs.get("obs_robot0_joint_pos", np.zeros(6, dtype=float))),
-                        "robot0_joint_vel": _to_serializable(obs.get("obs_robot0_joint_vel", np.zeros(6, dtype=float))),
-                        "robot0_gripper_qpos": _to_serializable(obs.get("obs_robot0_gripper_qpos", np.zeros(12, dtype=float))),
-                        "robot0_gripper_qvel": _to_serializable(obs.get("obs_robot0_gripper_qvel", np.zeros(12, dtype=float))),
-                        "robot0_eef_pos": _to_serializable(obs.get("obs_robot0_eef_pos", np.zeros(3, dtype=float))),
-                        "robot0_eef_quat": _to_serializable(obs.get("obs_robot0_eef_quat", np.array([0.0, 0.0, 0.0, 1.0], dtype=float))),
-                        "drill_001_pos": _to_serializable(obs.get("obs_drill_001_pos", np.zeros(3, dtype=float))),
-                        "drill_001_quat": _to_serializable(obs.get("obs_drill_001_quat", np.array([0.0, 0.0, 0.0, 1.0], dtype=float))),
+                        "right": _to_serializable(self.latest_gello_action),
+                        "right_gripper": _to_serializable(self.latest_hand_qpos),
                     },
                     "datagen_info": {
                         "subtask_term_signals": {
-                            "drill_grasped": int(np.asarray(obs.get("signal_drill_grasped", [0]))[0]),
-                            "drill_lifted": int(np.asarray(obs.get("signal_drill_lifted", [0]))[0]),
+                            "drill_grasped": int(self.latest_signal_drill_grasped),
+                            "drill_lifted": int(self.latest_signal_drill_lifted),
                         }
+                    },
+                }
+                if lite:
+                    return base_resp
+                return {
+                    **base_resp,
+                    "obs": {
+                        **_to_serializable(obs_dict),
                     },
                     "camera_info": _to_serializable(camera_info),
                 }
