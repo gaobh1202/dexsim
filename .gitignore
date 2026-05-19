@@ -1,1 +1,7 @@
 dexmimicgen/datasets/
+point_gen/
+robosuite/robosuite/demonstration_collection/
+
+__pycache__/
+*.pyc
+MUJOCO_LOG.TXT

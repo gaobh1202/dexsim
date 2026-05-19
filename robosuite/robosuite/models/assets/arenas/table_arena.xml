@@ -42,10 +42,14 @@
     <!-- front view -->
     <camera mode="fixed" name="frontview" pos="1.5 0 1.45" quat="0.56 0.43 0.43 0.56"/>
     <!-- third view (pitched 10 deg downward from frontview for 3D policy point cloud capture) -->
-    <camera mode="fixed" name="thirdview" pos="1.4 0 1.8" quat="0.5962 0.3801 0.3801 0.5962"/>
+    <!-- <camera mode="fixed" name="thirdview" pos="1.4 0 1.8" quat="0.5962 0.3801 0.3801 0.5962"/> -->
+    <!-- 采集点云数据的视角，相比上一个thirdiew位置更靠右，视角向下 -->
+    <!-- <camera mode="fixed" name="pointview" pos="1 1.3 1.8" quat="0.3227 0.2057 0.4967 0.7790"/> -->
+    <!-- 采集点云数据的视角，参考agentview视角，朝向桌面 -->
+    <camera mode="fixed" name="pointview" pos="-0.8 0 1.8" quat="0.67397475 0.21391128 -0.21391128 -0.6739747"/>
     <!-- bird view -->
     <camera mode="fixed" name="birdview" pos="-0.2 0 3.0" quat="0.7071 0 0 -0.7071"/>
-    <!-- agent view -->
+    <!-- agent view，这个agentview在环境里会被重新设置，例如 dexmimicgen/dexmimicgen/environments/two_arm_drawer_cleanup.py-->
     <camera mode="fixed" name="agentview" pos="0.5 0 1.35" quat="0.653 0.271 0.271 0.653"/>
     <!-- side view -->
     <camera mode="fixed" name="sideview" pos="-0.05651774593317116 1.2761224129427358 1.4879572214102434" quat="0.009905065491771751 0.006877963156909582 0.5912228352893879 0.806418094001364" />

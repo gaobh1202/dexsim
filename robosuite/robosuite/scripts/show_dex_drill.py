@@ -18,6 +18,12 @@ import time
 from threading import Lock
 
 import numpy as np
+# Force MuJoCo offscreen rendering to EGL on GPU device 1.
+# Must be set before importing robosuite / mujoco bindings.
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+os.environ["EGL_DEVICE_ID"] = "1"
+os.environ["MUJOCO_EGL_DEVICE_ID"] = "1"
 import robosuite
 from pynput.keyboard import Key, Listener
 try:
@@ -587,6 +593,8 @@ def main():
     hand_qpos_groups = _build_hand_qpos_groups(hand_controller.joint_names)
     hand_ctrl_low12 = np.array(env.sim.model.actuator_ctrlrange[hand_actuator_ids, 0], dtype=float)
     hand_ctrl_high12 = np.array(env.sim.model.actuator_ctrlrange[hand_actuator_ids, 1], dtype=float)
+    print(f"hand_ctrl_low12: {hand_ctrl_low12}")
+    print(f"hand_ctrl_high12: {hand_ctrl_high12}")
     hand_target12 = np.array(env.sim.data.qpos[hand_qpos_idx], dtype=float)
     hand_target = hand_qpos12_to_norm6(hand_target12, hand_low12, hand_high12, hand_qpos_groups)
     auto_hand_start = hand_target.copy()
