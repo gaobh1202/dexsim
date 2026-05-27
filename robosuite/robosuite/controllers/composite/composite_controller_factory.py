@@ -10,6 +10,15 @@ from robosuite.controllers.parts.controller_factory import load_part_controller_
 from robosuite.utils.log_utils import ROBOSUITE_DEFAULT_LOGGER
 
 
+def _robosuite_root() -> pathlib.Path:
+    module_file = getattr(robosuite, "__file__", None)
+    if module_file:
+        return pathlib.Path(module_file).parent
+    ns_path = pathlib.Path(list(getattr(robosuite, "__path__", []))[0])
+    nested_pkg_path = ns_path / "robosuite"
+    return nested_pkg_path if nested_pkg_path.is_dir() else ns_path
+
+
 def validate_composite_controller_config(config: dict):
     # Check top-level keys
     required_keys = ["type", "body_parts"]
@@ -54,7 +63,7 @@ def refactor_composite_controller_config(controller_config, robot_type, arms):
     if not is_part_controller_config(controller_config):
         return controller_config
 
-    config_dir = pathlib.Path(robosuite.__file__).parent / "controllers/config/robots/"
+    config_dir = _robosuite_root() / "controllers/config/robots/"
     name = robot_type.lower()
     configs = os.listdir(config_dir)
     if f"default_{name}.json" in configs:
@@ -91,13 +100,9 @@ def load_composite_controller_config(controller: Optional[str] = None, robot: Op
         assert robot is not None, "If controller is None, robot must be specified."
         # Load robot's controller
         robot_name = _get_robot_name(robot)
-        controller_fpath = (
-            pathlib.Path(robosuite.__file__).parent / f"controllers/config/robots/default_{robot_name}.json"
-        )
+        controller_fpath = _robosuite_root() / f"controllers/config/robots/default_{robot_name}.json"
         if not os.path.exists(controller_fpath):
-            controller_fpath = (
-                pathlib.Path(robosuite.__file__).parent / "controllers/config/default/composite/basic.json"
-            )
+            controller_fpath = _robosuite_root() / "controllers/config/default/composite/basic.json"
     elif isinstance(controller, str):
         if controller.endswith(".json"):
             # Use the specified path directly
@@ -108,9 +113,7 @@ def load_composite_controller_config(controller: Optional[str] = None, robot: Op
             ), f"Controller {controller} not found in COMPOSITE_CONTROLLERS_DICT"
             # Load from robosuite/controllers/config/default/composite/
             controller_name = controller.lower()
-            controller_fpath = (
-                pathlib.Path(robosuite.__file__).parent / f"controllers/config/default/composite/{controller_name}.json"
-            )
+            controller_fpath = _robosuite_root() / f"controllers/config/default/composite/{controller_name}.json"
     else:
         raise ValueError("Controller must be None or a string.")
 

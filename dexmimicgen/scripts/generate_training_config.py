@@ -97,8 +97,8 @@ def make_generators(base_config, dataset_dir, output_dir):
             #     os.path.join(dataset_dir, "generated", "two_arm_drawer_cleanup.hdf5"),
             # ],
             dataset_paths=[
-                os.path.join(dataset_dir, "two_arm_drawer_cleanup_part1.hdf5"),
-            ],
+                os.path.join(dataset_dir, "two_arm_drawer_cleanup_part1_pointview_rgb_pc_crop.hdf5"),
+            ], # /home/benhua/Improved-3D-Diffusion-Policy/dexmimicgen_dataset/two_arm_drawer_cleanup_part1_pointview_rgb_pc_crop.hdf5
             dataset_names=[
                 "two_arm_drawer_cleanup_D0",
             ],

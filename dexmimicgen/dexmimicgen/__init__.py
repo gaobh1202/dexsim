@@ -19,5 +19,6 @@ from dexmimicgen.environments.two_arm_three_piece_assembly import (
     TwoArmThreePieceAssembly,
 )
 from dexmimicgen.environments.two_arm_transport import TwoArmTransport
+from dexmimicgen.environments.single_arm_hammer_cleanup import HammerCleanup
 
 __version__ = "0.1.0"

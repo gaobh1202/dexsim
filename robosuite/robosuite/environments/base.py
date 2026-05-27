@@ -584,7 +584,14 @@ class MujocoEnv(metaclass=EnvMeta):
             str: Edited xml file as string
         """
 
-        path = os.path.split(robosuite.__file__)[0]
+        module_file = getattr(robosuite, "__file__", None)
+        if module_file:
+            path = os.path.split(module_file)[0]
+        else:
+            # Namespace-package fallback when importing robosuite from source trees.
+            ns_path = list(getattr(robosuite, "__path__", []))[0]
+            nested_pkg_path = os.path.join(ns_path, "robosuite")
+            path = nested_pkg_path if os.path.isdir(nested_pkg_path) else ns_path
         path_split = path.split("/")
 
         # replace mesh and texture file paths

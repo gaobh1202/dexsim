@@ -134,7 +134,13 @@ class TwoArmDexMGEnv(TwoArmEnv):
         """
         xml_str = super().edit_model_xml(xml_str)
 
-        path = os.path.split(dexmimicgen.__file__)[0]
+        module_file = getattr(dexmimicgen, "__file__", None)
+        if module_file:
+            path = os.path.split(module_file)[0]
+        else:
+            ns_path = list(getattr(dexmimicgen, "__path__", []))[0]
+            nested_pkg_path = os.path.join(ns_path, "dexmimicgen")
+            path = nested_pkg_path if os.path.isdir(nested_pkg_path) else ns_path
         path_split = path.split("/")
 
         # replace mesh and texture file paths
