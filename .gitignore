@@ -1,6 +1,11 @@
 dexmimicgen/datasets/
 point_gen/
 robosuite/robosuite/demonstration_collection/
+dexmimicgen/dexmimic_config/
+dexmimicgen/dexmimic_output/
+dexmimicgen/dexmimicgen/models/assets/objects/nail.zip
+dexmimicgen/dexmimicgen/models/assets/textures.zip
+dexmimicgen/autogen_dextool_demo/outputs/
 
 __pycache__/
 *.pyc

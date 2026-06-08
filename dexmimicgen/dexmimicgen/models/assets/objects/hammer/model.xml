@@ -1,4 +1,4 @@
-<mujoco model="hammer_1">
+<mujoco model="hammer">
   <asset>
     <mesh file="visual/86b394b12876a673a62c16e1690c45ac.obj" name="hammer_vis" scale="1.0 1.0 1.0"/>
     <mesh file="collision/collision_part_0.obj" name="hammer_coll_0" scale="1.0 1.0 1.0"/>

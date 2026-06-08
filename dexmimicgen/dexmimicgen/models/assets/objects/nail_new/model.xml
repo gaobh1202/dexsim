@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="nail_new">
+  <asset>
+    <mesh file="nail_new.stl" name="nail_new_mesh" scale="1000 1000 1000"/>
+    <material name="nail_metal" specular="0.9" shininess="0.4" rgba="0.72 0.72 0.76 1"/>
+  </asset>
+  <worldbody>
+    <body>
+      <body name="object">
+        <!-- group=1 视觉 geom：渲染纹理，无碰撞 -->
+        <geom type="mesh" mesh="nail_new_mesh"
+              conaffinity="0" contype="0"
+              group="1" material="nail_metal"/>
+        <!-- group=0 碰撞 geom：参与物理，透明 -->
+        <geom type="mesh" mesh="nail_new_mesh"
+              solimp="0.998 0.998 0.001" solref="0.001 1"
+              friction="1.5 0.005 0.0001"
+              contype="1" conaffinity="1"
+              group="0" rgba="0.72 0.72 0.76 0.0"/>
+      </body>
+      <site rgba="0 0 0 0" size="0.005" pos="0 0 0"       name="bottom_site"/>
+      <site rgba="0 0 0 0" size="0.005" pos="0 0 0.166"   name="top_site"/>
+      <site rgba="0 0 0 0" size="0.005" pos="0.042 0 0.083" name="horizontal_radius_site"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -140,7 +140,18 @@ def get_env_from_dataset(h5f):
     env_kwargs["has_offscreen_renderer"] = False
     env_kwargs["use_camera_obs"] = False
     env_kwargs.pop("env_lang", None)
-    return robosuite.make(**env_kwargs)
+    env = robosuite.make(**env_kwargs)
+
+    # controller_configs may be null (uses robot default JSON), so _force_osc_absolute_world
+    # above may have been a no-op.  Patch the already-instantiated controllers directly.
+    for robot in env.robots:
+        for arm_name in robot.arms:
+            ctrl = robot.composite_controller.part_controllers.get(arm_name)
+            if ctrl is not None and getattr(ctrl, "input_type", None) is not None:
+                ctrl.input_type = "absolute"
+                ctrl.input_ref_frame = "world"
+
+    return env
 
 
 def apply_model_xml(env, model_xml):

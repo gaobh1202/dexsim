@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="wood_shelf">
+  <asset>
+    <mesh file="meshes/wood_shelf.stl" name="wood_shelf_mesh" scale="1500 1500 1500"/>
+    <texture file="../textures/dark-wood.png" name="tex-dark-wood"/>
+    <material name="dark_wood" reflectance="0.3" texrepeat="3 3"
+              texture="tex-dark-wood" texuniform="true"/>
+  </asset>
+  <worldbody>
+    <body>
+      <body name="object">
+        <!-- group=1 视觉 geom：渲染纹理，无碰撞 -->
+        <geom mesh="wood_shelf_mesh" type="mesh"
+              conaffinity="0" contype="0"
+              group="1" material="dark_wood"/>
+        <!-- group=0 碰撞 geom：参与物理，透明 -->
+        <geom mesh="wood_shelf_mesh" type="mesh"
+              solimp="0.998 0.998 0.001" solref="0.001 1"
+              density="500" friction="0.95 0.3 0.1"
+              condim="4" group="0" rgba="0.7 0.5 0.3 0.0"/>
+      </body>
+      <site rgba="0 0 0 0" size="0.005" pos="0 0 0.001"       name="bottom_site"/>
+      <site rgba="0 0 0 0" size="0.005" pos="0 0 0.1589"     name="top_site"/>
+      <site rgba="0 0 0 0" size="0.005" pos="0.2363 0 0.0795" name="horizontal_radius_site"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -19,6 +19,14 @@ from dexmimicgen.environments.two_arm_three_piece_assembly import (
     TwoArmThreePieceAssembly,
 )
 from dexmimicgen.environments.two_arm_transport import TwoArmTransport
+from dexmimicgen.environments.single_arm_drill_nail import DrillNail
+from dexmimicgen.models.objects.nail_red_object import NailRedObject
+from dexmimicgen.models.objects.nail_yellow_object import NailYellowObject
 from dexmimicgen.environments.single_arm_hammer_cleanup import HammerCleanup
+from dexmimicgen.environments.single_arm_shelf_nail import ShelfNailScene
+from dexmimicgen.environments.single_arm_drill_shelf_nail import DrillShelfNail
+from dexmimicgen.environments.single_arm_hammer_shelf_nail import HammerShelfNail
+from dexmimicgen.models.objects.wood_shelf_object import WoodShelfObject
+from dexmimicgen.models.objects.nail_new_object import NailNewObject
 
 __version__ = "0.1.0"

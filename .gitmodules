@@ -1,0 +1,9 @@
+[submodule "DemoGen"]
+	path = DemoGen
+	url = https://github.com/TEA-Lab/DemoGen.git
+[submodule "mimicgen"]
+	path = mimicgen
+	url = https://github.com/NVlabs/mimicgen.git
+[submodule "robomimic"]
+	path = robomimic
+	url = https://github.com/ARISE-Initiative/robomimic.git

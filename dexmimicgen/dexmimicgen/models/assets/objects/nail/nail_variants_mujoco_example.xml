@@ -1,0 +1,51 @@
+<mujoco model="nail_variants_example">
+  <!--
+    Nail variants for dexmimicgen (meshes rotated +90 deg about +X from source assets).
+    Assets live under dexmimicgen/models/assets/objects/nail/.
+  -->
+
+  <compiler meshdir="." assetdir="."/>
+
+  <asset>
+    <mesh name="nail_body_plain" file="plain/nail_body_plain.obj" scale="1 1 1"/>
+
+    <mesh name="nail_body_star" file="nail_red_star/nail_body.obj"/>
+    <mesh name="emblem_star" file="nail_red_star/emblem_star.obj"/>
+
+    <mesh name="nail_body_tri" file="nail_yellow_triangle/nail_body.obj"/>
+    <mesh name="emblem_triangle" file="nail_yellow_triangle/emblem_triangle.obj"/>
+
+    <material name="nail_metal"
+              texture="nail_tex" specular="0.5" shininess="0.5" reflectance="0.3"/>
+    <material name="red_star_mat"
+              rgba="0.90 0.05 0.05 1" specular="0.3" shininess="0.4"/>
+    <material name="yellow_tri_mat"
+              rgba="1.00 0.85 0.00 1" specular="0.3" shininess="0.4"/>
+
+    <texture name="nail_tex" type="2d" file="plain/texture_pbr_20250901.png"/>
+  </asset>
+
+  <worldbody>
+    <body name="nail_red_star" pos="-0.15 0 0">
+      <freejoint/>
+      <geom name="nail_star_body" type="mesh" mesh="nail_body_star"
+            material="nail_metal" mass="0.05" contype="1" conaffinity="1"/>
+      <geom name="nail_star_emblem" type="mesh" mesh="emblem_star"
+            material="red_star_mat" mass="0" contype="0" conaffinity="0"/>
+    </body>
+
+    <body name="nail_yellow_triangle" pos="0.15 0 0">
+      <freejoint/>
+      <geom name="nail_tri_body" type="mesh" mesh="nail_body_tri"
+            material="nail_metal" mass="0.05" contype="1" conaffinity="1"/>
+      <geom name="nail_tri_emblem" type="mesh" mesh="emblem_triangle"
+            material="yellow_tri_mat" mass="0" contype="0" conaffinity="0"/>
+    </body>
+
+    <body name="nail_plain" pos="0 0.15 0">
+      <freejoint/>
+      <geom name="nail_plain_body" type="mesh" mesh="nail_body_plain"
+            material="nail_metal" mass="0.05" contype="1" conaffinity="1"/>
+    </body>
+  </worldbody>
+</mujoco>

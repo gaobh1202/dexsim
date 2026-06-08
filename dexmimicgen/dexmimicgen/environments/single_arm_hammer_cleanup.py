@@ -17,7 +17,7 @@ from robosuite.utils.placement_samplers import (
 )
 
 import dexmimicgen
-from dexmimicgen.models.objects import DrawerObject
+from dexmimicgen.models.objects import DrawerObject, HammerObject
 
 
 class HammerCleanup(ManipulationEnv):
@@ -203,19 +203,7 @@ class HammerCleanup(ManipulationEnv):
 
         self.drawer = self._get_drawer_model()
 
-        from dexmimicgen.models.objects.xml_objects import BlenderObject
-
-        hammer_mjcf_path = os.path.join(dexmimicgen.__path__[0], "dexmimicgen", "hammer_1", "model.xml")
-        self.hammer = BlenderObject(
-            name="hammer",
-            mjcf_path=hammer_mjcf_path,
-            scale=self.hammer_scale,
-            solimp=(0.999, 0.999, 0.001),
-            solref=(0.001, 1),
-            density=200,
-            friction=(1, 1, 1),
-            margin=0.001,
-        )
+        self.hammer = HammerObject(name="hammer", scale=self.hammer_scale)
 
         self._get_placement_initializer()
 

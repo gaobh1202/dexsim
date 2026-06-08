@@ -10,5 +10,10 @@ from .xml_objects import (
     CoffeeMachineLidObject,
     CoffeeMachinePodObject,
     DrawerObject,
+    HammerObject,
     LongDrawerObject,
 )
+from .nail_red_object import NailRedObject
+from .nail_yellow_object import NailYellowObject
+from .wood_shelf_object import WoodShelfObject
+from .nail_new_object import NailNewObject

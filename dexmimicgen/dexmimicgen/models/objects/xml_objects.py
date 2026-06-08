@@ -231,6 +231,24 @@ class DrawerObject(MujocoXMLObject):
         return (0.5, 0.4, 0.3)
 
 
+class HammerObject(BlenderObject):
+    """
+    Claw hammer object (used in HammerCleanup task).
+    """
+
+    def __init__(self, name, scale=0.28):
+        super().__init__(
+            name=name,
+            mjcf_path=xml_path_completion("objects/hammer/model.xml"),
+            scale=scale,
+            solimp=(0.999, 0.999, 0.001),
+            solref=(0.001, 1),
+            density=200,
+            friction=(1, 1, 1),
+            margin=0.001,
+        )
+
+
 class LongDrawerObject(MujocoXMLObject):
     """
     Drawer that has longer platform for easier grasping of objects inside.

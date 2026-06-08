@@ -43,7 +43,36 @@ import datetime
 import json
 import os
 import random
+import sys
 import time
+
+
+def _early_configure_mujoco_gl():
+    """Must run before `import robosuite` / mujoco (GL backend is fixed at first use)."""
+    if "MUJOCO_GL" in os.environ:
+        return
+    if "--mujoco-gl" in sys.argv:
+        idx = sys.argv.index("--mujoco-gl")
+        if idx + 1 < len(sys.argv):
+            os.environ["MUJOCO_GL"] = sys.argv[idx + 1]
+            return
+    if "--render" in sys.argv:
+        backend = "glfw"
+    elif "--use-obs" in sys.argv:
+        return
+    else:
+        backend = "osmesa"
+    os.environ["MUJOCO_GL"] = backend
+    if backend in ("glfw", "osmesa", "glx"):
+        try:
+            import robosuite.macros as macros
+
+            macros.MUJOCO_GPU_RENDERING = False
+        except Exception:
+            pass
+
+
+_early_configure_mujoco_gl()
 
 import h5py
 import imageio
@@ -58,6 +87,26 @@ try:
     import cv2
 except Exception:
     cv2 = None
+
+
+def _configure_mujoco_gl(backend):
+    """
+    Pick a MuJoCo GL backend that works on this machine.
+
+    Default playback writes MP4 via offscreen render; EGL often fails without
+    PLATFORM_DEVICE (use OSMesa). On-screen playback uses GLFW + mjviewer.
+    """
+    if backend == "default":
+        backend = "osmesa"
+    os.environ["MUJOCO_GL"] = backend
+    if backend in ("glfw", "glx", "osmesa"):
+        try:
+            import robosuite.macros as macros
+
+            macros.MUJOCO_GPU_RENDERING = False
+        except Exception:
+            pass
+    print(colored(f"Using MUJOCO_GL={backend}", "cyan"))
 
 
 def normalize_video_frame(frame):
@@ -114,34 +163,46 @@ class OpenCVVideoWriter:
 
 
 def make_video_writer(video_path, fps=20):
-    """
-    Create a robust video writer across different local imageio plugin setups.
-    Tries FFMPEG first, then pyav with explicit codecs.
-    """
-    attempts = [dict(format="FFMPEG", codec="libx264")]
-    last_err = None
-    for opts in attempts:
-        try:
-            return imageio.get_writer(video_path, fps=fps, **opts)
-        except Exception as e:
-            last_err = e
-            print(
-                colored(
-                    "warning: failed to create video writer with "
-                    f"options {opts}: {e}",
-                    "yellow",
-                )
-            )
-
-    # Final fallback: cv2 writer, avoiding pyav shape / codec issues on some setups.
+    """Create a video writer, falling back to cv2 if imageio/FFMPEG is unavailable."""
+    try:
+        return imageio.get_writer(video_path, fps=fps, format="FFMPEG", codec="libx264")
+    except Exception as e:
+        print(colored(f"warning: imageio/FFMPEG writer failed: {e}", "yellow"))
     try:
         return OpenCVVideoWriter(video_path, fps=fps)
     except Exception as e:
-        last_err = e
         raise RuntimeError(
             "Failed to create video writer. Install one of: "
             "`pip install imageio[ffmpeg]` or `pip install opencv-python`."
-        ) from last_err
+        ) from e
+
+
+
+def _print_initial_eef_pose(env):
+    """Print the initial EEF world pose for each robot arm (debug helper)."""
+    from scipy.spatial.transform import Rotation
+
+    for ridx, robot in enumerate(env.robots):
+        for arm_name in robot.arms:
+            try:
+                site_id = int(robot.eef_site_id[arm_name])
+                site_name = env.sim.model.site_id2name(site_id)
+            except Exception:
+                print(f"  [debug] robot{ridx} {arm_name}: EEF site not found")
+                continue
+            pos = env.sim.data.site_xpos[site_id].copy()
+            R   = env.sim.data.site_xmat[site_id].reshape(3, 3).copy()
+            rotvec    = Rotation.from_matrix(R).as_rotvec()
+            quat_xyzw = Rotation.from_matrix(R).as_quat()
+            # palm direction = -z axis of EEF frame (pointing into palm)
+            palm_dir  = -R[:, 2]
+            print(
+                f"  [debug] robot{ridx} {arm_name} initial EEF ({site_name}):\n"
+                f"          pos        = {pos.round(4)}\n"
+                f"          rotvec     = {rotvec.round(4)}\n"
+                f"          quat(xyzw) = {quat_xyzw.round(4)}\n"
+                f"          palm_dir   = {palm_dir.round(4)}"
+            )
 
 
 def playback_trajectory_with_env(
@@ -177,19 +238,18 @@ def playback_trajectory_with_env(
     video_count = 0
     assert not (render and write_video)
 
-    # load the initial state
-    ## this reset call doesn't seem necessary.
-    ## seems ok to remove but haven't fully tested it.
-    ## removing for now
-    # env.reset()
-
     if verbose:
-        ep_meta = json.loads(initial_state["ep_meta"])
-        lang = ep_meta.get("lang", None)
-        if lang is not None:
-            print(colored(f"Instruction: {lang}", "green"))
+        ep_meta_raw = initial_state.get("ep_meta")
+        if ep_meta_raw:
+            ep_meta = json.loads(ep_meta_raw)
+            lang = ep_meta.get("lang", None)
+            if lang is not None:
+                print(colored(f"Instruction: {lang}", "green"))
         print(colored("Spawning environment...", "yellow"))
     reset_to(env, initial_state)
+
+    # Debug: print initial EEF world pose for quick sanity-check.
+    _print_initial_eef_pose(env)
 
     traj_len = states.shape[0]
     action_playback = actions is not None
@@ -222,7 +282,12 @@ def playback_trajectory_with_env(
                             )
                         )
         else:
-            reset_to(env, {"states": states[i]})
+            env.sim.set_state_from_flattened(states[i])
+            env.sim.forward()
+            if hasattr(env, "update_sites"):
+                env.update_sites()
+            if hasattr(env, "update_state"):
+                env.update_state()
 
         # on-screen render
         if render:
@@ -306,19 +371,7 @@ def playback_trajectory_with_obs(
 
 
 def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
-    """
-    Retrieves env metadata from dataset.
-
-    Args:
-        dataset_path (str): path to dataset
-
-    Returns:
-        env_meta (dict): environment metadata. Contains 3 keys:
-
-            :`'env_name'`: name of environment
-            :`'type'`: type of environment, should be a value in EB.EnvType
-            :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
-    """
+    """Load environment metadata dict from an HDF5 dataset file."""
     dataset_path = os.path.expanduser(dataset_path)
     f = h5py.File(dataset_path, "r")
     if ds_format == "robomimic":
@@ -329,84 +382,53 @@ def get_env_metadata_from_dataset(dataset_path, ds_format="robomimic"):
     return env_meta
 
 
-class ObservationKeyToModalityDict(dict):
-    """
-    Custom dictionary class with the sole additional purpose of automatically registering new "keys" at runtime
-    without breaking. This is mainly for backwards compatibility, where certain keys such as "latent", "actions", etc.
-    are used automatically by certain models (e.g.: VAEs) but were never specified by the user externally in their
-    config. Thus, this dictionary will automatically handle those keys by implicitly associating them with the low_dim
-    modality.
-    """
 
-    def __getitem__(self, item):
-        # If a key doesn't already exist, warn the user and add default mapping
-        if item not in self.keys():
-            print(
-                f"ObservationKeyToModalityDict: {item} not found,"
-                f" adding {item} to mapping with assumed low_dim modality!"
-            )
-            self.__setitem__(item, "low_dim")
-        return super(ObservationKeyToModalityDict, self).__getitem__(item)
+def _model_xml_from_state(state):
+    """Return non-empty MJCF string from state, or None if missing/blank."""
+    if "model" not in state:
+        return None
+    model = state["model"]
+    if model is None:
+        return None
+    if isinstance(model, bytes):
+        model = model.decode("utf-8", errors="replace")
+    model = str(model).strip()
+    return model if model else None
+
+
+def _apply_ep_meta(env, state):
+    ep_meta = json.loads(state["ep_meta"]) if state.get("ep_meta") else {}
+    if hasattr(env, "set_attrs_from_ep_meta"):
+        env.set_attrs_from_ep_meta(ep_meta)
+    elif hasattr(env, "set_ep_meta"):
+        env.set_ep_meta(ep_meta)
 
 
 def reset_to(env, state):
-    """
-    Reset to a specific simulator state.
-
-    Args:
-        state (dict): current simulator state that contains one or more of:
-            - states (np.ndarray): initial state of the mujoco environment
-            - model (str): mujoco scene xml
-
-    Returns:
-        observation (dict): observation dictionary after setting the simulator state (only
-            if "states" is in @state)
-    """
-    should_ret = False
-    if "model" in state:
-        if state.get("ep_meta", None) is not None:
-            # set relevant episode information
-            ep_meta = json.loads(state["ep_meta"])
-        else:
-            ep_meta = {}
-        if hasattr(env, "set_attrs_from_ep_meta"):  # older versions had this function
-            env.set_attrs_from_ep_meta(ep_meta)
-        elif hasattr(env, "set_ep_meta"):  # newer versions
-            env.set_ep_meta(ep_meta)
-        # this reset is necessary.
-        # while the call to env.reset_from_xml_string does call reset,
-        # that is only a "soft" reset that doesn't actually reload the model.
+    """Reset the simulator to a specific state (model XML and/or flat state vector)."""
+    model_xml = _model_xml_from_state(state)
+    if model_xml:
+        _apply_ep_meta(env, state)
+        # reset() is required: reset_from_xml_string only does a "soft" reset
+        # that doesn't reload the model.
         env.reset()
         robosuite_version_id = int(robosuite.__version__.split(".")[1])
         if robosuite_version_id <= 3:
             from robosuite.utils.mjcf_utils import postprocess_model_xml
-
-            xml = postprocess_model_xml(state["model"])
+            xml = postprocess_model_xml(model_xml)
         else:
-            # v1.4 and above use the class-based edit_model_xml function
-            xml = env.edit_model_xml(state["model"])
-
+            xml = env.edit_model_xml(model_xml)
         env.reset_from_xml_string(xml)
         env.sim.reset()
-        # hide teleop visualization after restoring from model
-        # env.sim.model.site_rgba[env.eef_site_id] = np.array([0., 0., 0., 0.])
-        # env.sim.model.site_rgba[env.eef_cylinder_id] = np.array([0., 0., 0., 0.])
+    elif state.get("ep_meta") is not None:
+        _apply_ep_meta(env, state)
     if "states" in state:
         env.sim.set_state_from_flattened(state["states"])
         env.sim.forward()
-        should_ret = True
-
-    # update state as needed
     if hasattr(env, "update_sites"):
-        # older versions of environment had update_sites function
         env.update_sites()
     if hasattr(env, "update_state"):
-        # later versions renamed this to update_state
         env.update_state()
-
-    # if should_ret:
-    #     # only return obs if we've done a forward call - otherwise the observations will be garbage
-    #     return get_observation()
     return None
 
 
@@ -421,9 +443,7 @@ def playback_dataset(args):
 
     # Auto-fill camera rendering info if not specified
     if args.render_image_names is None:
-        # We fill in the automatic values
-        env_meta = get_env_metadata_from_dataset(dataset_path=args.dataset)
-        args.render_image_names = "robot0_agentview_center"
+        args.render_image_names = ["robot0_agentview_center"]
 
     if args.render:
         # on-screen rendering can only support one camera
@@ -435,6 +455,12 @@ def playback_dataset(args):
             not args.use_actions
         ), "playback with observations is offline and does not support action playback"
 
+    if not args.use_obs:
+        if args.render:
+            _configure_mujoco_gl(args.mujoco_gl if args.mujoco_gl != "default" else "glfw")
+        elif write_video:
+            _configure_mujoco_gl(args.mujoco_gl)
+
     env = None
 
     # create environment only if not playing back with observations
@@ -444,10 +470,14 @@ def playback_dataset(args):
 
         env_kwargs = env_meta["env_kwargs"]
         env_kwargs["env_name"] = env_meta["env_name"]
-        env_kwargs["has_renderer"] = False
         env_kwargs["renderer"] = "mjviewer"
-        env_kwargs["has_offscreen_renderer"] = write_video
         env_kwargs["use_camera_obs"] = False
+        if args.render:
+            env_kwargs["has_renderer"] = True
+            env_kwargs["has_offscreen_renderer"] = False
+        else:
+            env_kwargs["has_renderer"] = False
+            env_kwargs["has_offscreen_renderer"] = write_video
 
         if args.verbose:
             print(
@@ -458,7 +488,7 @@ def playback_dataset(args):
             )
         if "env_lang" in env_kwargs:
             env_kwargs.pop("env_lang")
-        if "env_name" == "TwoArnCanSortRandom" and args.use_current_model:
+        if env_kwargs["env_name"] == "TwoArnCanSortRandom" and args.use_current_model:
             print(
                 colored(
                     "Warning: TwoArnCanSortRandom environment with use_current_model will have chance of incorrect color placement (red to blue bin or blue to red bin)",
@@ -509,9 +539,11 @@ def playback_dataset(args):
         # prepare initial state to reload from
         states = f["data/{}/states".format(ep)][()]
         initial_state = dict(states=states[0])
-        initial_state["model"] = f["data/{}".format(ep)].attrs["model_file"]
+        model_file = f["data/{}".format(ep)].attrs.get("model_file", "")
         if args.use_current_model:
             initial_state["model"] = env.sim.model.get_xml()
+        elif _model_xml_from_state({"model": model_file}) is not None:
+            initial_state["model"] = model_file
         initial_state["ep_meta"] = f["data/{}".format(ep)].attrs.get("ep_meta", None)
 
         if args.extend_states:
@@ -638,6 +670,14 @@ if __name__ == "__main__":
         "--use_current_model",
         action="store_true",
         help="use the current model instead of the one stored in the dataset",
+    )
+
+    parser.add_argument(
+        "--mujoco-gl",
+        type=str,
+        default="default",
+        choices=["default", "glfw", "egl", "osmesa", "glx"],
+        help="MuJoCo GL backend. Default: osmesa for MP4 export, glfw with --render.",
     )
 
     args = parser.parse_args()
